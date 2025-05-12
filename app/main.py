@@ -1,13 +1,8 @@
 from fastapi import FastAPI
-from app.api.endpoints import cpu, storage, network, gpu, summary
+from app.api import auto_load_routers
 
 app = FastAPI()
-
-app.include_router(cpu.router, prefix="/api/cpu")
-app.include_router(storage.router, prefix="/api/storage")
-app.include_router(network.router, prefix="/api/net")
-app.include_router(gpu.router, prefix="/api/gpu")
-app.include_router(summary.router, prefix="/api/summary")
+app.include_router(auto_load_routers())
 
 @app.get("/")
 def root():
