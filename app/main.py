@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from app.api import auto_load_routers
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import layer_config
 
 app = FastAPI()
 app.include_router(auto_load_routers())
@@ -11,6 +12,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+def startup_event():
+    config_path = "/home/xitongzu/cedfs_server/meta-1.toml"
+    layer_config.load_from_file(config_path)
 
 @app.get("/")
 def root():

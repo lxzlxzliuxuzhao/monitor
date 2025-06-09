@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 from kubernetes import client, config
+from kubernetes.client import CustomObjectsApi
 from typing import List
 import traceback
 
@@ -32,9 +33,10 @@ class PodInfo:
     def __repr__(self):
         return f"<Container {self.name} in {self.namespace}>"
 
-
 class ContainerService:
     def __init__(self):
+        self.v1 = None
+        self.custom_api = None
         try:
             if self._in_k8s():
                 print("Loading in-cluster Kubernetes config...")
@@ -44,12 +46,11 @@ class ContainerService:
                 config.load_kube_config()
             
             self.v1 = client.CoreV1Api()
+            self.custom_api = CustomObjectsApi()
             print("Kubernetes API client initialized successfully")
         except Exception as e:
             print(f"Error initializing Kubernetes client: {e}")
             traceback.print_exc()
-            # 即使初始化失败也允许继续运行
-            self.v1 = None
 
     def _in_k8s(self):
         return os.path.exists("/var/run/secrets/kubernetes.io/serviceaccount")
@@ -111,7 +112,6 @@ class ContainerService:
         all_info = []
         try:
             print("Fetching pods from Kubernetes API...")
-            # 使用分页获取所有pods
             continue_token = None
             while True:
                 pods_chunk = self.v1.list_pod_for_all_namespaces(
@@ -120,22 +120,16 @@ class ContainerService:
                     watch=False
                 )
                 for pod in pods_chunk.items:
-                    # 安全获取可能为空的字段
                     metadata = pod.metadata or client.V1ObjectMeta()
                     spec = pod.spec or client.V1PodSpec()
                     status = pod.status or client.V1PodStatus()
-                    
-                    # 基础信息
                     namespace = metadata.namespace or "default"
                     pod_name = metadata.name or "<none>"
-                    
-                    # Pod级别信息
                     pod_ip = status.pod_ip or "<none>"
                     node_name = spec.node_name or "<none>"
                     nominated_node = status.nominated_node_name or "<none>"
                     age = self._calculate_age(metadata.creation_timestamp)
                     
-                    # 创建容器状态映射
                     container_status_map = {}
                     for container_status in (status.container_statuses or []):
                         name = container_status.name
@@ -148,7 +142,6 @@ class ContainerService:
                             "status": self._get_container_status(container_status)
                         }
                     
-                    # 处理readiness gates
                     readiness_gates = []
                     for gate in (spec.readiness_gates or []):
                         gate_type = gate.condition_type
@@ -166,11 +159,8 @@ class ContainerService:
                     containers_list = []
                     ready_count = 0
                     restart_count = 0
-                    # 处理每个容器
                     for container in (spec.containers or []):
                         container_name = container.name or "<none>"
-                        
-                        # 获取容器状态信息
                         status_info = container_status_map.get(container_name, {
                             "ready": "False",
                             "restarts": "0",
@@ -218,3 +208,80 @@ class ContainerService:
             print(f"Error fetching pods: {e}")
             traceback.print_exc()
             return []
+
+    def count_containers(self) -> int:
+        """
+        计算所有命名空间中非 KubeVirt Pod 的容器总数。
+        
+        Returns:
+            int: 非 KubeVirt 容器的总数
+        """
+        if not self.v1:
+            print("Kubernetes API client not initialized. Returning 0.")
+            return 0
+            
+        total_containers = 0
+        try:
+            print("Counting non-KubeVirt containers across all pods...")
+            continue_token = None
+            while True:
+                pods_chunk = self.v1.list_pod_for_all_namespaces(
+                    limit=500,
+                    _continue=continue_token,
+                    watch=False
+                )
+                for pod in pods_chunk.items:
+                    metadata = pod.metadata or client.V1ObjectMeta()
+                    if 'kubevirt.io' in (metadata.labels or {}):
+                        continue
+                    spec = pod.spec or client.V1PodSpec()
+                    containers = spec.containers or []
+                    total_containers += len(containers)
+                
+                continue_token = pods_chunk.metadata._continue
+                if not continue_token:
+                    break
+
+            print(f"Total non-KubeVirt containers found: {total_containers}")
+            return total_containers
+
+        except Exception as e:
+            print(f"Error counting containers: {e}")
+            traceback.print_exc()
+            return 0
+
+    def count_kubevirt_vms(self) -> int:
+        """
+        计算所有命名空间中 KubeVirt 虚拟机的总数。
+        
+        Returns:
+            int: 虚拟机总数
+        """
+        if not hasattr(self, 'custom_api') or self.custom_api is None:
+            print("Kubernetes Custom API client not initialized or KubeVirt not available. Returning 0.")
+            return 0
+            
+        try:
+            print("Counting KubeVirt VirtualMachineInstances...")
+            total_vms = 0
+            continue_token = None
+            while True:
+                vmi_list = self.custom_api.list_cluster_custom_object(
+                    group="kubevirt.io",
+                    version="v1",
+                    plural="virtualmachineinstances",
+                    limit=500,
+                    _continue=continue_token
+                )
+                total_vms += len(vmi_list.get("items", []))
+                continue_token = vmi_list.get("metadata", {}).get("_continue")
+                if not continue_token:
+                    break
+
+            print(f"Total KubeVirt VirtualMachineInstances found: {total_vms}")
+            return total_vms
+
+        except Exception as e:
+            print(f"Error counting KubeVirt VMs: {e}")
+            traceback.print_exc()
+            return 0
