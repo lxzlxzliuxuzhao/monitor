@@ -119,3 +119,23 @@ class VMCreateResponse(BaseModel):
     status: str
     message: Optional[str] = None
     vm_ip: Optional[str] = None
+
+class Pod_Network_Info(BaseModel):
+    pod_name: str
+    namespace: str
+    status: str
+    ip: Optional[str] = None
+    DNS_latency: Optional[float] = None
+    strategy: Optional[str] = None
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "pod_name": "my-pod",
+                "namespace": "default",
+                "status": "Running",
+                "ip": "192.168.1.10",
+                "DNS_latency": 0.025,
+                "strategy": "RollingUpdate"
+            }
+        }
