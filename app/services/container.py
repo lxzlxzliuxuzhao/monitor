@@ -40,7 +40,7 @@ class ContainerService:
         try:
             if self._in_k8s():
                 print("Loading in-cluster Kubernetes config...")
-                config.load_incluster_config()
+                config.load_kube_config()
             else:
                 print("Loading local Kubernetes config...")
                 config.load_kube_config()
@@ -53,7 +53,7 @@ class ContainerService:
             traceback.print_exc()
 
     def _in_k8s(self):
-        return os.path.exists("/var/run/secrets/kubernetes.io/serviceaccount")
+        return os.path.exists("/root/.kube/config")
 
     @staticmethod
     def _calculate_age(creation_timestamp):
