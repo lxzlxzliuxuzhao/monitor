@@ -15,7 +15,7 @@ def get_vms(namespace: str = "default"):
     vms = vm_service.list_virtual_machines(namespace)
     return {"vms": vms}
 
-@router.post("/vm/create", response_model=VMCreateResponse)
+@router.post("/vm_create", response_model=VMCreateResponse)
 def create_virtual_machine_api(req: VMCreateRequest):
     try:
         # 创建虚拟机

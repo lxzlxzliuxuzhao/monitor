@@ -21,4 +21,4 @@ fi
 
 # 2. 启动 FastAPI 服务
 echo "🚀 Starting FastAPI server at http://localhost:8000 ..."
-uvicorn app.main:app --reload --host 0.0.0.0 --port 18888
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

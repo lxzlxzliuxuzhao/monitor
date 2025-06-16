@@ -139,3 +139,10 @@ class Pod_Network_Info(BaseModel):
                 "strategy": "RollingUpdate"
             }
         }
+
+class VolumeMountRequest(BaseModel):
+    namespace: str = "default"
+    deployment_name: str
+    volume_name: str
+    mount_path: str  # 容器内挂载路径，例如 /new-dir
+    host_path: str   # 节点上目录路径，例如 /path/on/host
