@@ -211,3 +211,37 @@ class DeploymentNetworkPolicyResponse(BaseModel):
     pod_selector: Dict[str, str]
     ingress_rules: List[NetworkPolicyRuleResponse]
     egress_rules: List[NetworkPolicyRuleResponse]
+
+class VolumeMountInfo(BaseModel):
+    """卷挂载详细信息"""
+    name: str
+    mount_path: str
+    read_only: Optional[bool] = False
+    sub_path: Optional[str] = None
+    mount_propagation: Optional[str] = None
+
+class VolumeInfo(BaseModel):
+    """卷详细信息"""
+    name: str
+    type: str = "unknown"  # configMap, secret, persistentVolumeClaim, hostPath, emptyDir 等
+    config_map_name: Optional[str] = None
+    secret_name: Optional[str] = None
+    pvc_name: Optional[str] = None
+    host_path: Optional[str] = None
+    storage_class: Optional[str] = None
+    size: Optional[str] = None  # 存储大小
+
+class ContainerMountInfo(BaseModel):
+    """容器挂载信息"""
+    container_name: str
+    volume_mounts: List[VolumeMountInfo] = []
+    volumes: List[VolumeInfo] = []
+
+class DeploymentMountStats(BaseModel):
+    """Deployment 挂载统计信息"""
+    deployment_name: str
+    namespace: str
+    containers: List[ContainerMountInfo] = []
+    total_volumes: int = 0
+    volume_types: Dict[str, int] = {}  # 卷类型统计
+    total_mounts: int = 0
