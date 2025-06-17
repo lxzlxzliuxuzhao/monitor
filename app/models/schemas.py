@@ -2,7 +2,6 @@
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List, Dict
 
-
 class ContainerInfo(BaseModel):
     """
     容器信息模型
@@ -146,3 +145,69 @@ class VolumeMountRequest(BaseModel):
     volume_name: str
     mount_path: str  # 容器内挂载路径，例如 /new-dir
     host_path: str   # 节点上目录路径，例如 /path/on/host
+
+class NetworkPolicyRule(BaseModel):
+    """网络策略规则模型
+    
+    属性:
+        direction: 流量方向 ('ingress' 或 'egress')
+        protocol: 网络协议 ('TCP' 或 'UDP')
+        ports: 端口号列表
+        source_pod_labels: 源Pod标签选择器
+        source_namespace_labels: 源命名空间标签选择器
+        description: 规则描述 (可选)
+    """
+    direction: str
+    protocol: str
+    ports: List[int]
+    source_pod_labels: Optional[Dict[str, str]] = None
+    source_namespace_labels: Optional[Dict[str, str]] = None
+    description: Optional[str] = None
+
+class DeploymentNetworkPolicyCreate(BaseModel):
+    """为Deployment创建网络策略的请求模型
+    
+    属性:
+        deployment_name: Deployment名称
+        namespace: 命名空间 (默认为'default')
+        rules: 网络策略规则列表
+    """
+    deployment_name: str
+    namespace: str = "default"
+    rules: List[NetworkPolicyRule]
+
+class NetworkPolicyRuleResponse(BaseModel):
+    """网络策略规则响应模型
+
+    属性:
+        direction: 流量方向 ('ingress' 或 'egress')
+        protocol: 网络协议 ('TCP' 或 'UDP')
+        ports: 端口号列表
+        source_pod_labels: 源Pod标签选择器
+        source_namespace_labels: 源命名空间标签选择器
+        description: 规则描述 (可选)
+    """
+    direction: str
+    protocol: str
+    ports: List[int]
+    source_pod_labels: Optional[Dict[str, str]] = None
+    source_namespace_labels: Optional[Dict[str, str]] = None
+    description: Optional[str] = None
+
+class DeploymentNetworkPolicyResponse(BaseModel):
+    """网络策略创建响应模型
+    
+    属性:
+        policy_name: 创建的策略名称
+        deployment_name: 关联的Deployment名称
+        namespace: 命名空间
+        pod_selector: Pod选择器标签
+        ingress_rules: 入站规则
+        egress_rules: 出站规则
+    """
+    policy_name: str
+    deployment_name: str
+    namespace: str
+    pod_selector: Dict[str, str]
+    ingress_rules: List[NetworkPolicyRuleResponse]
+    egress_rules: List[NetworkPolicyRuleResponse]
