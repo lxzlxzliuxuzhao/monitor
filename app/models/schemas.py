@@ -246,33 +246,19 @@ class DeploymentMountStats(BaseModel):
     volume_types: Dict[str, int] = {}  # 卷类型统计
     total_mounts: int = 0
 
-class VolumeMountInfo(BaseModel):
-    """容器挂载点详细信息"""
-    container: str = Field(..., description="容器名称")
-    mount_path: str = Field(..., description="挂载路径")
-    read_only: bool = Field(False, description="是否只读")
-    sub_path: Optional[str] = Field(None, description="子路径")
-    name: str = Field(..., description="引用的Volume名称")
-
-class VolumeInfo(BaseModel):
-    """Volume定义信息"""
-    name: str = Field(..., description="Volume名称")
-    type: str = Field(..., description="类型(configmap/secret/pvc等)")
-    details: Optional[Dict] = Field(None, description="类型相关配置")
-
 class DeploymentInfo(BaseModel):
     """
-    Deployment信息模型（包含挂载信息）
+    Deployment信息模型
     """
-    name: str = Field(..., description="Deployment名称")
-    namespace: str = Field(..., description="命名空间")
+    name: str
+    namespace: str
     ready: str = Field(..., description="就绪副本数/期望副本数，格式如 '1/3'")
     up_to_date: str = Field(..., description="符合最新模板的副本数")
     available: str = Field(..., description="可用副本数")
-    age: str = Field(..., description="创建时间")
-    volumes: List[VolumeInfo] = Field(default_factory=list, description="Volume定义列表")
-    volume_mounts: List[VolumeMountInfo] = Field(default_factory=list, description="容器挂载点列表")
-
+    age: str
+    containers_list: List[ContainerInfo] = Field(default_factory=list, description="容器列表")
+    
+    # 可选：添加验证器确保ready字段格式正确
     @validator('ready')
     def validate_ready_format(cls, v):
         if not isinstance(v, str):
@@ -280,11 +266,8 @@ class DeploymentInfo(BaseModel):
         if '/' not in v:
             raise ValueError('ready字段格式应为"就绪数/总数"，如"1/3"')
         return v
-
-    @validator('volumes', 'volume_mounts', pre=True)
-    def validate_empty_lists(cls, v):
-        return v or []  # 确保None值转为空列表
-
+    
+    # 可选：添加示例
     class Config:
         schema_extra = {
             "example": {
@@ -294,23 +277,13 @@ class DeploymentInfo(BaseModel):
                 "up_to_date": "3",
                 "available": "3",
                 "age": "2d",
-                "volumes": [
+                "containers_list": [
                     {
-                        "name": "config-volume",
-                        "type": "configmap",
-                        "details": {
-                            "name": "app-config",
-                            "items": [{"key": "config.yaml", "path": "config.yaml"}]
-                        }
-                    }
-                ],
-                "volume_mounts": [
-                    {
-                        "container": "nginx",
-                        "name": "config-volume",
-                        "mount_path": "/etc/config",
-                        "read_only": True,
-                        "sub_path": ""
+                        "name": "nginx",
+                        "image": "nginx:1.19.0",
+                        "ready": "True",
+                        "status": "Running",
+                        "restarts": "0"
                     }
                 ]
             }
