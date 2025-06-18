@@ -2,7 +2,7 @@
 from fastapi import APIRouter
 from typing import List, Dict
 from app.services.container import ContainerService
-from app.models.schemas import PodInfo
+from app.models.schemas import PodInfo, DeploymentInfo
 
 router = APIRouter(prefix="/containers", tags=["Containers"])
 
@@ -11,6 +11,10 @@ service = ContainerService()
 @router.get("/", response_model=List[PodInfo])
 def list_containers():
     return service.get_all_containers()
+
+@router.get("/deployments", response_model=List[DeploymentInfo])
+def list_deployments():
+    return service.get_all_deployments()
 
 @router.get("/counts", response_model=Dict[str, int])
 def get_counts():

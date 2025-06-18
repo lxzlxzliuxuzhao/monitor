@@ -33,6 +33,20 @@ class PodInfo:
     def __repr__(self):
         return f"<Container {self.name} in {self.namespace}>"
 
+class DeploymentInfo:
+    def __init__(self, **kwargs):
+        self.name = kwargs.get('name', '')
+        self.namespace = kwargs.get('namespace', '')
+        self.ready = kwargs.get('ready', '0/0')
+        self.up_to_date = kwargs.get('up_to_date', '0')
+        self.available = kwargs.get('available', '0')
+        self.age = kwargs.get('age', '<none>')
+        self.mounts = kwargs.get('mounts', []) 
+        self.container_mounts = kwargs.get('container_mounts', []) 
+        
+    def __repr__(self):
+        return f"<Deployment {self.name} in {self.namespace}>"
+
 class ContainerService:
     def __init__(self):
         self.v1 = None
@@ -46,7 +60,8 @@ class ContainerService:
                 config.load_kube_config()
             
             self.v1 = client.CoreV1Api()
-            self.custom_api = CustomObjectsApi()
+            self.apps_v1 = client.AppsV1Api()
+            self.core_v1 = client.CoreV1Api()
             print("Kubernetes API client initialized successfully")
         except Exception as e:
             print(f"Error initializing Kubernetes client: {e}")
@@ -104,109 +119,67 @@ class ContainerService:
         else:
             return "Unknown"
 
-    def get_all_containers(self) -> List[ContainerInfo]:
-        if not self.v1:
-            print("Kubernetes API client not initialized. Returning empty list.")
-            return []
-        
-        all_info = []
+    def get_all_deployments(self) -> List[DeploymentInfo]:
         try:
-            print("Fetching pods from Kubernetes API...")
-            continue_token = None
-            while True:
-                pods_chunk = self.v1.list_pod_for_all_namespaces(
-                    limit=500, 
-                    _continue=continue_token,
-                    watch=False
-                )
-                for pod in pods_chunk.items:
-                    metadata = pod.metadata or client.V1ObjectMeta()
-                    spec = pod.spec or client.V1PodSpec()
-                    status = pod.status or client.V1PodStatus()
-                    namespace = metadata.namespace or "default"
-                    pod_name = metadata.name or "<none>"
-                    pod_ip = status.pod_ip or "<none>"
-                    node_name = spec.node_name or "<none>"
-                    nominated_node = status.nominated_node_name or "<none>"
-                    age = self._calculate_age(metadata.creation_timestamp)
+            apps_v1 = client.AppsV1Api()
+            deps = apps_v1.list_deployment_for_all_namespaces(watch=False)
+            
+            result = []
+            for dep in deps.items:
+                # 解析 Volume 定义
+                volumes = []
+                for volume in dep.spec.template.spec.volumes or []:  # 显式处理None
+                    volume_info = {
+                        "name": volume.name,
+                        "type": None,
+                        "details": {}
+                    }
                     
-                    container_status_map = {}
-                    for container_status in (status.container_statuses or []):
-                        name = container_status.name
-                        if not name:
-                            continue
-                            
-                        container_status_map[name] = {
-                            "ready": "True" if container_status.ready else "False",
-                            "restarts": str(container_status.restart_count),
-                            "status": self._get_container_status(container_status)
-                        }
+                    if volume.config_map:
+                        volume_info["type"] = "configmap"
+                        volume_info["details"]["name"] = volume.config_map.name
+                    elif volume.secret:
+                        volume_info["type"] = "secret"
+                        volume_info["details"]["secret_name"] = volume.secret.secret_name
+                    elif volume.persistent_volume_claim:  # 新增PVC处理
+                        volume_info["type"] = "pvc"
+                        volume_info["details"]["claim_name"] = volume.persistent_volume_claim.claim_name
+                    elif volume.empty_dir:
+                        volume_info["type"] = "empty_dir"
+                    elif volume.host_path:
+                        volume_info["type"] = "host_path"
+                        volume_info["details"]["path"] = volume.host_path.path
                     
-                    readiness_gates = []
-                    for gate in (spec.readiness_gates or []):
-                        gate_type = gate.condition_type
-                        if not gate_type:
-                            continue
-                            
-                        for condition in (status.conditions or []):
-                            if condition.type == gate_type:
-                                readiness_gates.append(
-                                    f"{gate_type}={condition.status}"
-                                )
-                                break
-                    readiness_gates_str = ",".join(readiness_gates) if readiness_gates else "<none>"
-                    
-                    containers_list = []
-                    ready_count = 0
-                    restart_count = 0
-                    for container in (spec.containers or []):
-                        container_name = container.name or "<none>"
-                        status_info = container_status_map.get(container_name, {
-                            "ready": "False",
-                            "restarts": "0",
-                            "status": "Unknown"
+                    volumes.append(volume_info)
+
+                # 解析容器挂载点
+                container_mounts = []
+                for container in dep.spec.template.spec.containers or []:
+                    for mount in container.volume_mounts or []:
+                        container_mounts.append({
+                            "container": container.name,
+                            "name": mount.name,
+                            "mount_path": mount.mount_path,
+                            "read_only": getattr(mount, "read_only", False),
+                            "sub_path": getattr(mount, "sub_path", "")
                         })
 
-                        if status_info["ready"] == "True":
-                            ready_count += 1
-                        restart_count += int(status_info["restarts"])
-
-                        containers_list.append(
-                            ContainerInfo(
-                                name=container_name,
-                                image=container.image or "<none>",
-                                ready=status_info["ready"],
-                                status=status_info["status"],
-                                restarts=status_info["restarts"],
-                            )
-                        )
-                        
-                    all_info.append(
-                        PodInfo(
-                            name=f"{pod_name}",
-                            namespace=namespace,
-                            pod_name=pod_name,
-                            ready=f"{ready_count}/{len(spec.containers)}",
-                            restarts=str(restart_count),
-                            age=age,
-                            IP=pod_ip,
-                            node=node_name,
-                            nominated_node=nominated_node,
-                            readiness_gates=readiness_gates_str,
-                            containers_list=containers_list
-                        )
+                result.append(
+                    DeploymentInfo(
+                        name=dep.metadata.name,
+                        namespace=dep.metadata.namespace,
+                        ready=f"{dep.status.ready_replicas or 0}/{dep.spec.replicas}",
+                        up_to_date=str(dep.status.updated_replicas or 0),
+                        available=str(dep.status.available_replicas or 0),
+                        age=self._calculate_age(dep.metadata.creation_timestamp),
+                        volumes=volumes,
+                        volume_mounts=container_mounts
                     )
-                
-                continue_token = pods_chunk.metadata._continue
-                if not continue_token:
-                    break
-
-            print(f"Successfully fetched {len(all_info)} pods")
-            return all_info
-
+                )
+            
+            return result
         except Exception as e:
-            print(f"Error fetching pods: {e}")
-            traceback.print_exc()
+            print(f"Error: {str(e)}")
             return []
 
     def count_containers(self) -> int:
