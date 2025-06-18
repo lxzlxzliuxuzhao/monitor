@@ -21,4 +21,4 @@ fi
 
 # 2. 启动 FastAPI 服务
 echo "🚀 Starting FastAPI server at http://localhost:8000 ..."
-/home/xitongzu/miniconda3/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8070
+/home/xitongzu/miniconda3/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

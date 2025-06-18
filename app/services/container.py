@@ -119,6 +119,111 @@ class ContainerService:
         else:
             return "Unknown"
 
+    def get_all_containers(self) -> List[ContainerInfo]:
+        if not self.v1:
+            print("Kubernetes API client not initialized. Returning empty list.")
+            return []
+        
+        all_info = []
+        try:
+            print("Fetching pods from Kubernetes API...")
+            continue_token = None
+            while True:
+                pods_chunk = self.v1.list_pod_for_all_namespaces(
+                    limit=500, 
+                    _continue=continue_token,
+                    watch=False
+                )
+                for pod in pods_chunk.items:
+                    metadata = pod.metadata or client.V1ObjectMeta()
+                    spec = pod.spec or client.V1PodSpec()
+                    status = pod.status or client.V1PodStatus()
+                    namespace = metadata.namespace or "default"
+                    pod_name = metadata.name or "<none>"
+                    pod_ip = status.pod_ip or "<none>"
+                    node_name = spec.node_name or "<none>"
+                    nominated_node = status.nominated_node_name or "<none>"
+                    age = self._calculate_age(metadata.creation_timestamp)
+                    
+                    container_status_map = {}
+                    for container_status in (status.container_statuses or []):
+                        name = container_status.name
+                        if not name:
+                            continue
+                            
+                        container_status_map[name] = {
+                            "ready": "True" if container_status.ready else "False",
+                            "restarts": str(container_status.restart_count),
+                            "status": self._get_container_status(container_status)
+                        }
+                    
+                    readiness_gates = []
+                    for gate in (spec.readiness_gates or []):
+                        gate_type = gate.condition_type
+                        if not gate_type:
+                            continue
+                            
+                        for condition in (status.conditions or []):
+                            if condition.type == gate_type:
+                                readiness_gates.append(
+                                    f"{gate_type}={condition.status}"
+                                )
+                                break
+                    readiness_gates_str = ",".join(readiness_gates) if readiness_gates else "<none>"
+                    
+                    containers_list = []
+                    ready_count = 0
+                    restart_count = 0
+                    for container in (spec.containers or []):
+                        container_name = container.name or "<none>"
+                        status_info = container_status_map.get(container_name, {
+                            "ready": "False",
+                            "restarts": "0",
+                            "status": "Unknown"
+                        })
+
+                        if status_info["ready"] == "True":
+                            ready_count += 1
+                        restart_count += int(status_info["restarts"])
+
+                        containers_list.append(
+                            ContainerInfo(
+                                name=container_name,
+                                image=container.image or "<none>",
+                                ready=status_info["ready"],
+                                status=status_info["status"],
+                                restarts=status_info["restarts"],
+                            )
+                        )
+                        
+                    all_info.append(
+                        PodInfo(
+                            name=f"{pod_name}",
+                            namespace=namespace,
+                            pod_name=pod_name,
+                            ready=f"{ready_count}/{len(spec.containers)}",
+                            restarts=str(restart_count),
+                            age=age,
+                            IP=pod_ip,
+                            node=node_name,
+                            nominated_node=nominated_node,
+                            readiness_gates=readiness_gates_str,
+                            containers_list=containers_list
+                        )
+                    )
+                
+                continue_token = pods_chunk.metadata._continue
+                if not continue_token:
+                    break
+
+            print(f"Successfully fetched {len(all_info)} pods")
+            return all_info
+
+        except Exception as e:
+            print(f"Error fetching pods: {e}")
+            traceback.print_exc()
+            return []
+
     def get_all_deployments(self) -> List[DeploymentInfo]:
         try:
             apps_v1 = client.AppsV1Api()
